@@ -1,0 +1,10 @@
+Pedidos Específicos – Power BI: Adesão Genesis
+Remoção de eventos duplicados no relatório.
+Verificação de casos em que a base não contabiliza o chamado (ex.: TA 342666824).
+Exclusão de eventos encerrados com raiz 'rede externa'.
+Atualização dos steps atuais: Aceite / Deslocamento / Diagnóstico / Recuperação / Pré-baixa.
+Criação de colunas para comparação de tempos entre as esteiras, utilizando como base o preenchimento dos carimbos.
+Inclusão dos seguintes filtros na visualização: Produtivo x Improdutivo, Baixado por grupo, Baixado por usuário, Código de Baixa, Baixa Defeito, Empresa Manutenção.
+Pedidos Específicos – Power BI: Produtividade Genesis
+Inclusão de um período maior  em relação a base analítica (atualmente há apenas visão D-1).
+Separação sistêmica entre técnicos de Rede e TX. Sugestão: incluir campo na tela de cadastro GENESIS APP para diferenciar TX ou REDE para maior aderência.
