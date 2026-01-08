@@ -1,3 +1,85 @@
+Com base nas imagens que você enviou e na lista de pedidos, fiz a análise técnica para separar o que é responsabilidade do Desenvolvedor Power BI (Você) e o que é Engenharia de Dados/Sistemas (Backend/SQL/App).
+
+Aqui está a divisão sugerida para o seu Kanban:
+
+1. Análise de Responsabilidade (Quem faz o quê?)
+Grupo A: Power BI (ETL / Modelagem / Visualização)
+Estas tarefas são feitas dentro do .pbix (Power Query ou DAX).
+
+Remoção de eventos duplicados: Deve ser tratado no Power Query (Etapa de "Remover Duplicatas" baseada no ID do evento ou Chave Primária) antes de carregar o modelo.
+
+Exclusão de eventos 'rede externa': Filtro simples no Power Query (filtrar linhas) ou no painel de filtros do relatório.
+
+Atualização dos steps (Aceite/Deslocamento/etc): Requer alteração na lógica DAX ou na coluna condicional que define em qual etapa o chamado está. As colunas atuais (Atribuição, Aceite Site, etc.) precisarão ser remapeadas para essa nova regra de negócio.
+
+Comparação de tempos (Duração): Criação de Colunas Calculadas ou Medidas DAX (DATEDIFF) subtraindo os carimbos de data/hora das novas etapas definidas.
+
+Inclusão de Filtros (Visual): Arrastar os campos para o painel de filtros lateral ou criar Slicers na tela. (Dependência: os dados precisam existir na tabela).
+
+Grupo B: Sistema / Query (Backend / Banco de Dados)
+Estas tarefas exigem acesso à query SQL original ou alteração no software fonte.
+
+Verificação de casos não contabilizados (TA 342666824): Isso é investigação de dados. Se não está no PBI, verifique a Query SQL. Se não está no SQL, é falha na extração do sistema.
+
+Inclusão de um período maior (Histórico): Se a query atual limita a D-1 (Ontem) ou Month to Date, a cláusula WHERE da query SQL precisa ser alterada para trazer mais histórico. O Power BI apenas lê o que a query entrega.
+
+Novos Campos para Filtros (Baixado por, Código Baixa, etc.): Olhando o print do Analítico (Imagem 13), essas colunas não parecem estar todas lá. Se não estiverem no modelo de dados, será necessário alterar a query SQL para trazer essas colunas ("SELECT ..., cod_baixa, grupo_baixa FROM ...").
+
+Separação sistêmica (Rede vs TX): O pedido explicitamente sugere "incluir campo na tela de cadastro GENESIS APP". Isso é Desenvolvimento de Software (App), fora do escopo de BI.
+
+2. Sugestão de Cards para o Kanban
+Aqui está como você pode organizar os cards, ordenados por fluxo lógico de trabalho:
+
+Coluna: Backlog / A Fazer (Sistêmico & Dados)
+Tarefas que precisam ser resolvidas na fonte ou na query SQL antes de mexer no visual.
+
+[SISTEMA/APP] Solicitar campo "Rede/TX" no App Genesis
+
+Descrição: Abrir chamado para time de Dev do App incluir flag no cadastro para diferenciar técnicos.
+
+[DADOS/SQL] Investigação de TAs ausentes (Ex: 342666824)
+
+Descrição: Validar se o TA existe no banco de dados. Se sim, por que a query do BI o exclui?
+
+[DADOS/SQL] Expansão da Janela de Tempo (Produtividade)
+
+Descrição: Alterar query para trazer histórico superior a D-1 na base analítica.
+
+[DADOS/SQL] Importação de Colunas para Novos Filtros
+
+Descrição: Adicionar à query: Produtivo/Improdutivo, Grupo Baixa, Usuário Baixa, Cód. Baixa, Empresa Manutenção.
+
+Coluna: A Fazer (Power BI - ETL & Modelagem)
+Tratamento dos dados dentro do Power BI.
+
+[ETL] Limpeza de Duplicatas e Filtro de Rede Externa
+
+Descrição: No Power Query, aplicar Table.Distinct nos IDs de evento e filtrar fora Raiz = 'Rede Externa'.
+
+[MODELAGEM] Mapeamento dos Novos Steps (Esteira)
+
+Descrição: Criar lógica (Coluna Condicional ou DAX) para os novos status: Aceite > Deslocamento > Diagnóstico > Recuperação > Pré-baixa. Nota: Verificar se você tem os carimbos de hora para "Deslocamento" e "Diagnóstico" na base atual.
+
+[DAX] Cálculo de Tempos entre Steps
+
+Descrição: Criar medidas de DATEDIFF entre os carimbos dos novos steps para gerar as colunas de comparação.
+
+Coluna: A Fazer (Power BI - Visualização)
+Alterações no layout e front-end.
+
+[VISUAL] Implementação dos Novos Filtros de Baixa
+
+Descrição: Adicionar slicers laterais para: Produtivo/Improdutivo, Baixado por (Grupo/Usuário), Código de Baixa.
+
+[VISUAL] Atualizar Tabelas de Esteira
+
+Descrição: Substituir as colunas antigas da tabela visual (Atribuição, Aceite Site...) pelas novas colunas calculadas na etapa de Modelagem.
+
+
+
+
+
+
 Pedidos Específicos – Power BI: Adesão Genesis
 Remoção de eventos duplicados no relatório.
 Verificação de casos em que a base não contabiliza o chamado (ex.: TA 342666824).
@@ -8,3 +90,7 @@ Inclusão dos seguintes filtros na visualização: Produtivo x Improdutivo, Baix
 Pedidos Específicos – Power BI: Produtividade Genesis
 Inclusão de um período maior  em relação a base analítica (atualmente há apenas visão D-1).
 Separação sistêmica entre técnicos de Rede e TX. Sugestão: incluir campo na tela de cadastro GENESIS APP para diferenciar TX ou REDE para maior aderência.
+
+
+
+
