@@ -1,12 +1,12 @@
 /* =======================================================================
-   GOLD_MVP_V0.6.2 — Query final (Adaptação para Chave RE)
+   GOLD_MVP_V0.6.3 — Query final (Estrutura Espelhada)
    Autor Original: Miguel Alvarez Primo
    Adaptação: Engenheiro de Dados Sênior (Gemini)
    -----------------------------------------------------------------------
-   Mudanças V0.6.2:
+   Mudanças V0.6.3:
     - Alteração da chave primária de processamento de 'USUARIO' (Nome) para 'RE' (Matrícula).
-    - Inclusão da coluna RE no Output Final (TBL_RANK_TEC).
-    - Ajuste nos Joins para refletir TBL_PROC.RE -> TBF_TECNICOS.USUARIO.
+    - Output ajustado para espelhar EXATAMENTE a estrutura de colunas da TBL_RANK_TEC fornecida.
+    - Inclusão das colunas NOTA_PRODUTIVIDADE, NOTA_TEMPO, NOTA_DEFLATOR e anomes.
    -----------------------------------------------------------------------
 */
 
@@ -16,7 +16,7 @@
 DECLARE @DESLOC INT = 0;
 DECLARE @StartDate DATE = CAST(GETDATE() - 30 - @DESLOC AS DATE);
 DECLARE @EndDate   DATE = CAST(GETDATE() - @DESLOC AS DATE);
-DECLARE @VersaoRegra NVARCHAR(20) = N'V0.6.2'; -- Versão atualizada
+DECLARE @VersaoRegra NVARCHAR(20) = N'V0.6.3'; -- Versão atualizada
 DECLARE @DataExecucao DATETIME = GETDATE();
 DECLARE @Days_Login_Window INT = 7;
 
@@ -48,7 +48,8 @@ DECLARE @pen_Teleport FLOAT = -0.00;
 DECLARE @OutlierMultiplier FLOAT = 1.5;
 DECLARE @OutlierExtreme    FLOAT = 3.0;
 
-DECLARE @Carga_Ref_Data DATETIME;
+-- Define a data de referência da carga (importante para anomes/anomessemana)
+DECLARE @Carga_Ref_Data DATETIME = CAST(@EndDate AS DATETIME);
 
 /* =========================
    STEP 0 — DIM TÉCNICOS
@@ -129,7 +130,7 @@ WHERE P.DATA >= CASE
 
 
 /* ============================================================
-   [V0.6.2] Performance Indices (Atualizados para RE)
+   [V0.6.3] Performance Indices (Atualizados para RE)
    ============================================================ */
 
 CREATE INDEX IX_PROC_PERIODO_OS_RE          ON #PROC_PERIODO (NUM_OS, RE);
@@ -163,7 +164,7 @@ WHERE rn = 1;
 CREATE CLUSTERED INDEX CX_OP_ONE ON #OP_ONE (NUM_OS);
 
 /* ============================================================
-   [V0.6.2] Consolidação única por (NUM_OS, RE)
+   [V0.6.3] Consolidação única por (NUM_OS, RE)
    ============================================================ */
 
 -- Datas mínimas por etapa
@@ -229,7 +230,7 @@ GROUP BY P.NUM_OS, P.RE;
 CREATE CLUSTERED INDEX CX_PAUSA_FLAG ON #PAUSA_FLAG (NUM_OS, RE);
 
 /* ============================================================
-   [V0.6.2] Montagem do #EVT final (Usando RE como chave)
+   [V0.6.3] Montagem do #EVT final (Usando RE como chave)
    ============================================================ */
 DROP TABLE IF EXISTS #EVT;
 SELECT
@@ -599,8 +600,8 @@ FULL OUTER JOIN LOGIN_FLAG F ON F.RE = U.RE;
 DROP TABLE IF EXISTS #SILVER_FINAL;
 SELECT
   '1. GOLD FINAL' AS RELATORIO,
-  W.RE, -- COLUNA NOVA ADICIONADA (Chave Real)
-  W.NOME_TECNICO AS USUARIO, -- COLUNA NOME (antiga USUARIO agora carrega o Nome)
+  W.RE,
+  W.NOME_TECNICO AS USUARIO,
   W.EMPRESA_PRINCIPAL AS EMPRESA, W.REGIONAL_PRINCIPAL AS REGIONAL, W.UF,
   W.TIPO_TEC,
   ISNULL(LC.FL_LOGIN_RECENTE, 0) AS LOGIN_7D,
@@ -633,6 +634,17 @@ SELECT
   ISNULL(T.concluidos_tempo_pendente, 0) AS concluidos_tempo_sem_baixa,
 
   CAST(FLOOR((W.DISTANCIA_MEDIA_METROS / 1000.0) * 100) / 100.0 AS DECIMAL(10,2)) AS DISTANCIA_MEDIA_OS_KM,
+  
+  -- Novas Colunas explicitas para bater com o layout
+  CAST(S.PTS_PRODUTIVIDADE AS DECIMAL(10,2)) AS NOTA_PRODUTIVIDADE,
+  CAST(S.PTS_TEMPO AS DECIMAL(10,2))         AS NOTA_TEMPO,
+  CAST(S.PTS_DEFLACAO AS DECIMAL(10,2))      AS NOTA_DEFLATOR,
+  
+  -- Coluna anomes que faltava
+  CONVERT(VARCHAR(6), @Carga_Ref_Data, 112) AS anomes,
+  CONCAT(CONVERT(char(6), @Carga_Ref_Data, 112),
+         RIGHT('00' + CAST(DATEPART(ISO_WEEK, @Carga_Ref_Data) AS varchar(2)), 2)) AS anomessemana,
+  CAST(@Carga_Ref_Data AS DATETIME) AS max_data_anomes,
 
   CAST(
     ( FLOOR(
@@ -653,10 +665,7 @@ SELECT
   CAST(FLOOR((S.PTS_PRODUTIVIDADE + S.PTS_TEMPO + S.PTS_DEFLACAO) * 100) / 100.0 AS DECIMAL(10,2)) AS KEY_SCORE,
 
   @VersaoRegra AS VERSAO,
-  @DataExecucao AS PROCESSADO_EM,
-  CONCAT(CONVERT(char(6), @Carga_Ref_Data, 112),
-         RIGHT('00' + CAST(DATEPART(ISO_WEEK, @Carga_Ref_Data) AS varchar(2)), 2)) AS anomessemana,
-  CAST(@Carga_Ref_Data AS DATETIME) AS max_data_anomes
+  @DataExecucao AS PROCESSADO_EM
 INTO #SILVER_FINAL
 FROM #BASE_DEDUP W
 JOIN #SCORE_SEGREGADO S ON S.RE = W.RE
@@ -667,24 +676,30 @@ ORDER BY NOTA_FINAL DESC;
 /* =========================
    STEP 8 — PERSISTÊNCIA GOLD
    ========================= */
+-- [V0.6.3] Fix Schema Drift
+IF OBJECT_ID('GENESIS.PROD.TBL_RANK_TEC', 'U') IS NOT NULL
+BEGIN
+    -- Verifica se a coluna RE existe na tabela destino
+    IF COL_LENGTH('GENESIS.PROD.TBL_RANK_TEC', 'RE') IS NULL
+    BEGIN
+        DECLARE @BkpName NVARCHAR(128) = 'TBL_RANK_TEC_BKP_' + CONVERT(VARCHAR, GETDATE(), 112) + '_' + REPLACE(CONVERT(VARCHAR, GETDATE(), 108), ':', '');
+        EXEC sp_rename 'GENESIS.PROD.TBL_RANK_TEC', @BkpName;
+        PRINT 'ALERT: Tabela GENESIS.PROD.TBL_RANK_TEC renomeada para ' + @BkpName + ' para aplicar novo schema (Coluna RE).';
+    END
+END
+
 IF OBJECT_ID('GENESIS.PROD.TBL_RANK_TEC', 'U') IS NULL
 BEGIN
   SELECT * INTO GENESIS.PROD.TBL_RANK_TEC FROM #SILVER_FINAL;
+  CREATE CLUSTERED INDEX CX_RANK_TEC ON GENESIS.PROD.TBL_RANK_TEC (RE, anomessemana);
 END
 ELSE
 BEGIN
-  -- Como adicionamos a coluna RE, precisamos garantir que o INSERT contemple a ordem correta
-  -- ou que a tabela destino já tenha sido alterada (ALTER TABLE ADD RE...)
-  -- Assumindo que a tabela será recriada ou truncada se a estrutura mudar drasticamente.
-  -- Se for incremental rígido, certifique-se que TBL_RANK_TEC tem a coluna RE.
   INSERT INTO GENESIS.PROD.TBL_RANK_TEC
   SELECT * FROM #SILVER_FINAL;
 
   ;WITH d AS (
-    SELECT
-      RE, -- Dedup pelo RE agora
-      anomessemana,
-      PROCESSADO_EM,
+    SELECT RE, anomessemana, PROCESSADO_EM,
       ROW_NUMBER() OVER (
         PARTITION BY RE, anomessemana
         ORDER BY PROCESSADO_EM DESC, max_data_anomes DESC, VERSAO DESC, RE ASC
