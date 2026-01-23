@@ -1,12 +1,12 @@
 /* =======================================================================
-   GOLD_MVP_V0.6.3 — Query final (Estrutura Espelhada)
+   GOLD_MVP_V0.6.4 — Query final (Layout Rigoroso Power BI)
    Autor Original: Miguel Alvarez Primo
    Adaptação: Engenheiro de Dados Sênior (Gemini)
    -----------------------------------------------------------------------
-   Mudanças V0.6.3:
-    - Alteração da chave primária de processamento de 'USUARIO' (Nome) para 'RE' (Matrícula).
-    - Output ajustado para espelhar EXATAMENTE a estrutura de colunas da TBL_RANK_TEC fornecida.
-    - Inclusão das colunas NOTA_PRODUTIVIDADE, NOTA_TEMPO, NOTA_DEFLATOR e anomes.
+   Mudanças V0.6.4:
+    - Garantia da ordem exata das colunas conforme TBL_RANK_TEC existente.
+    - Coluna [RE] forçada para VARCHAR(20).
+    - Mapeamento explícito coluna a coluna no STEP 7.
    -----------------------------------------------------------------------
 */
 
@@ -16,7 +16,7 @@
 DECLARE @DESLOC INT = 0;
 DECLARE @StartDate DATE = CAST(GETDATE() - 30 - @DESLOC AS DATE);
 DECLARE @EndDate   DATE = CAST(GETDATE() - @DESLOC AS DATE);
-DECLARE @VersaoRegra NVARCHAR(20) = N'V0.6.3'; -- Versão atualizada
+DECLARE @VersaoRegra NVARCHAR(20) = N'V0.6.4'; -- Versão atualizada
 DECLARE @DataExecucao DATETIME = GETDATE();
 DECLARE @Days_Login_Window INT = 7;
 
@@ -130,7 +130,7 @@ WHERE P.DATA >= CASE
 
 
 /* ============================================================
-   [V0.6.3] Performance Indices (Atualizados para RE)
+   [V0.6.4] Performance Indices (Atualizados para RE)
    ============================================================ */
 
 CREATE INDEX IX_PROC_PERIODO_OS_RE          ON #PROC_PERIODO (NUM_OS, RE);
@@ -164,7 +164,7 @@ WHERE rn = 1;
 CREATE CLUSTERED INDEX CX_OP_ONE ON #OP_ONE (NUM_OS);
 
 /* ============================================================
-   [V0.6.3] Consolidação única por (NUM_OS, RE)
+   [V0.6.4] Consolidação única por (NUM_OS, RE)
    ============================================================ */
 
 -- Datas mínimas por etapa
@@ -230,7 +230,7 @@ GROUP BY P.NUM_OS, P.RE;
 CREATE CLUSTERED INDEX CX_PAUSA_FLAG ON #PAUSA_FLAG (NUM_OS, RE);
 
 /* ============================================================
-   [V0.6.3] Montagem do #EVT final (Usando RE como chave)
+   [V0.6.4] Montagem do #EVT final (Usando RE como chave)
    ============================================================ */
 DROP TABLE IF EXISTS #EVT;
 SELECT
@@ -576,7 +576,7 @@ INTO #SCORE_SEGREGADO
 FROM #BASE_DEDUP W;
 
 /* =========================
-   STEP 7 — LOGIN & SILVER FINAL
+   STEP 7 — LOGIN & SILVER FINAL (Layout Rigoroso)
    ========================= */
 DROP TABLE IF EXISTS #LOGIN_CHECK;
 WITH ULTIMO_LOGIN AS (
@@ -600,47 +600,51 @@ FULL OUTER JOIN LOGIN_FLAG F ON F.RE = U.RE;
 DROP TABLE IF EXISTS #SILVER_FINAL;
 SELECT
   '1. GOLD FINAL' AS RELATORIO,
-  W.RE,
+  CAST(W.RE AS VARCHAR(20)) AS RE, -- [Layout Fix] RE como VARCHAR(20)
   W.NOME_TECNICO AS USUARIO,
-  W.EMPRESA_PRINCIPAL AS EMPRESA, W.REGIONAL_PRINCIPAL AS REGIONAL, W.UF,
+  W.EMPRESA_PRINCIPAL AS EMPRESA,
+  W.REGIONAL_PRINCIPAL AS REGIONAL,
+  W.UF,
   W.TIPO_TEC,
   ISNULL(LC.FL_LOGIN_RECENTE, 0) AS LOGIN_7D,
   LC.DT_ULTIMO_LOGIN_GERAL       AS DT_ULTIMO_LOGIN,
   W.DT_ULTIMA_OS_CONCLUIDA,
   (SELECT MAX(v) FROM (VALUES (W.ATRIB_BRUTO),(W.ACEITE_BRUTO),(W.SITE_TOTAL_BRUTO)) AS t(v)) AS TOTAL_OPORTUNIDADES_BRUTO,
   (SELECT MAX(v) FROM (VALUES (W.ATRIB_AJUST),(W.ACEITE_AJUST),(W.SITE_TOTAL_AJUST)) AS t(v)) AS TOTAL_OPORTUNIDADES_AJUSTADO,
-  W.ATRIB_BRUTO, W.ATRIB_AJUST,
-  W.ACEITE_BRUTO, W.ACEITE_AJUST,
+  W.ATRIB_BRUTO,
+  W.ATRIB_AJUST,
+  W.ACEITE_BRUTO,
+  W.ACEITE_AJUST,
   W.SITE_TOTAL_BRUTO AS NO_SITE_TOTAL_BRUTO,
   W.SITE_TOTAL_AJUST AS NO_SITE_TOTAL_AJUST,
   W.SITE_VALIDO_BRUTO AS NO_SITE_CORRETO_BRUTO,
   W.SITE_VALIDO_AJUST AS NO_SITE_CORRETO_AJUST,
   W.SITE_FORA_BRUTO   AS NO_SITE_ERRADO_BRUTO,
   W.SITE_FORA_AJUST   AS NO_SITE_ERRADO_AJUST,
-  W.PREBAIXA_BRUTO, W.PREBAIXA_AJUST,
+  W.PREBAIXA_BRUTO,
+  W.PREBAIXA_AJUST,
   (W.CICLOS_COMPLETOS_BR + W.CICLOS_FINAIS_BR) AS CICLOS_TOTAIS_BRUTO,
   (W.CICLOS_COMPLETOS_AJ + W.CICLOS_FINAIS_AJ) AS CICLOS_TOTAIS_AJUSTADO,
-  W.CICLOS_COMPLETOS_BR, W.CICLOS_COMPLETOS_AJ,
-  W.CICLOS_FINAIS_BR, W.CICLOS_FINAIS_AJ,
-
+  W.CICLOS_COMPLETOS_BR,
+  W.CICLOS_COMPLETOS_AJ,
+  W.CICLOS_FINAIS_BR,
+  W.CICLOS_FINAIS_AJ,
   CAST(FLOOR(W.TMP_MED_ATRIB_ACEITE * 100) / 100.0 AS DECIMAL(10,2)) AS MEDIA_TEMPO_ATRIB_ACEITE,
   CAST(FLOOR(W.TMP_MED_ACEITE_PRE  * 100) / 100.0 AS DECIMAL(10,2)) AS MEDIA_TEMPO_ACEITE_PREBAIXA,
-
   ISNULL(T.concluidos_tempo_1, 0) AS concluidos_tempo_1,
   ISNULL(T.concluidos_tempo_2, 0) AS concluidos_tempo_2,
   ISNULL(T.concluidos_tempo_3, 0) AS concluidos_tempo_3,
   ISNULL(T.concluidos_tempo_4, 0) AS concluidos_tempo_4,
   ISNULL(T.concluidos_tempo_5, 0) AS concluidos_tempo_5,
   ISNULL(T.concluidos_tempo_pendente, 0) AS concluidos_tempo_sem_baixa,
-
   CAST(FLOOR((W.DISTANCIA_MEDIA_METROS / 1000.0) * 100) / 100.0 AS DECIMAL(10,2)) AS DISTANCIA_MEDIA_OS_KM,
   
-  -- Novas Colunas explicitas para bater com o layout
+  -- Colunas extras do layout original
   CAST(S.PTS_PRODUTIVIDADE AS DECIMAL(10,2)) AS NOTA_PRODUTIVIDADE,
   CAST(S.PTS_TEMPO AS DECIMAL(10,2))         AS NOTA_TEMPO,
   CAST(S.PTS_DEFLACAO AS DECIMAL(10,2))      AS NOTA_DEFLATOR,
   
-  -- Coluna anomes que faltava
+  -- Coluna anomes
   CONVERT(VARCHAR(6), @Carga_Ref_Data, 112) AS anomes,
   CONCAT(CONVERT(char(6), @Carga_Ref_Data, 112),
          RIGHT('00' + CAST(DATEPART(ISO_WEEK, @Carga_Ref_Data) AS varchar(2)), 2)) AS anomessemana,
@@ -676,10 +680,11 @@ ORDER BY NOTA_FINAL DESC;
 /* =========================
    STEP 8 — PERSISTÊNCIA GOLD
    ========================= */
--- [V0.6.3] Fix Schema Drift
+-- [V0.6.4] Fix Schema Drift + Garantia de Ordem
 IF OBJECT_ID('GENESIS.PROD.TBL_RANK_TEC', 'U') IS NOT NULL
 BEGIN
-    -- Verifica se a coluna RE existe na tabela destino
+    -- Verifica se a coluna RE existe na tabela destino E se o tipo é compatível (se necessário)
+    -- Para segurança total, renomeamos se a coluna RE não existir.
     IF COL_LENGTH('GENESIS.PROD.TBL_RANK_TEC', 'RE') IS NULL
     BEGIN
         DECLARE @BkpName NVARCHAR(128) = 'TBL_RANK_TEC_BKP_' + CONVERT(VARCHAR, GETDATE(), 112) + '_' + REPLACE(CONVERT(VARCHAR, GETDATE(), 108), ':', '');
